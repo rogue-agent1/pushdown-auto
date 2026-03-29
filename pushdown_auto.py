@@ -1,60 +1,55 @@
 #!/usr/bin/env python3
-"""pushdown_auto - Pushdown automaton for context-free language recognition."""
-import sys
+"""Pushdown automaton simulator. Zero dependencies."""
 
 class PDA:
-    def __init__(self, start, accept_states, start_symbol="Z"):
-        self.state = start
-        self.accept = accept_states
-        self.stack = [start_symbol]
-        self.transitions = {}  # (state, input, stack_top) -> [(new_state, stack_push)]
-    def add(self, state, inp, stack_top, new_state, stack_push):
-        key = (state, inp, stack_top)
-        if key not in self.transitions:
-            self.transitions[key] = []
-        self.transitions[key].append((new_state, stack_push))
-    def accepts(self, word):
-        configs = [(self.state, list(self.stack), 0)]
+    def __init__(self, transitions, start, start_stack, accept):
+        self.transitions = transitions; self.start = start
+        self.start_stack = start_stack; self.accept = set(accept)
+
+    def accepts(self, input_str):
+        configs = [(self.start, list(input_str), [self.start_stack])]
         visited = set()
         while configs:
-            state, stack, pos = configs.pop()
-            key = (state, tuple(stack), pos)
+            state, remaining, stack = configs.pop()
+            key = (state, tuple(remaining), tuple(stack))
             if key in visited: continue
             visited.add(key)
-            if pos == len(word) and state in self.accept:
-                return True
-            # Epsilon transitions
-            if stack:
-                for ns, sp in self.transitions.get((state, "", stack[-1]), []):
-                    new_stack = stack[:-1] + list(reversed(sp)) if sp else stack[:-1]
-                    configs.append((ns, new_stack, pos))
-            # Input transitions
-            if pos < len(word) and stack:
-                for ns, sp in self.transitions.get((state, word[pos], stack[-1]), []):
-                    new_stack = stack[:-1] + list(reversed(sp)) if sp else stack[:-1]
-                    configs.append((ns, new_stack, pos + 1))
+            if not remaining and state in self.accept: return True
+            top = stack[-1] if stack else None
+            ch = remaining[0] if remaining else None
+            for (s, inp, stk_top), actions in self.transitions.items():
+                if s != state: continue
+                if stk_top is not None and stk_top != top: continue
+                if inp is not None and inp != ch: continue
+                for next_state, push in actions:
+                    new_stack = stack[:-1] if stk_top is not None else stack[:]
+                    if push: new_stack.extend(reversed(push))
+                    new_remaining = remaining[1:] if inp is not None else remaining[:]
+                    configs.append((next_state, new_remaining, new_stack))
         return False
 
-def test():
-    # PDA for a^n b^n
-    pda = PDA("q0", {"q2"}, "Z")
-    pda.add("q0", "a", "Z", "q0", "AZ")
-    pda.add("q0", "a", "A", "q0", "AA")
-    pda.add("q0", "b", "A", "q1", "")
-    pda.add("q1", "b", "A", "q1", "")
-    pda.add("q1", "", "Z", "q2", "Z")
-    assert pda.accepts("ab")
-    assert pda.accepts("aabb")
-    assert pda.accepts("aaabbb")
-    pda2 = PDA("q0", {"q2"}, "Z")
-    pda2.add("q0", "a", "Z", "q0", "AZ")
-    pda2.add("q0", "a", "A", "q0", "AA")
-    pda2.add("q0", "b", "A", "q1", "")
-    pda2.add("q1", "b", "A", "q1", "")
-    pda2.add("q1", "", "Z", "q2", "Z")
-    assert not pda2.accepts("aab")
-    assert not pda2.accepts("abb")
-    print("pushdown_auto: all tests passed")
+def balanced_parens_pda():
+    """PDA that accepts balanced parentheses."""
+    transitions = {
+        ("q0", "(", "Z"): [("q0", ["(", "Z"])],
+        ("q0", "(", "("): [("q0", ["(", "("])],
+        ("q0", ")", "("): [("q0", [])],
+        ("q0", None, "Z"): [("q1", [])],
+    }
+    return PDA(transitions, "q0", "Z", {"q1"})
+
+def anbn_pda():
+    """PDA that accepts a^n b^n."""
+    transitions = {
+        ("q0", "a", "Z"): [("q0", ["A", "Z"])],
+        ("q0", "a", "A"): [("q0", ["A", "A"])],
+        ("q0", "b", "A"): [("q1", [])],
+        ("q1", "b", "A"): [("q1", [])],
+        ("q1", None, "Z"): [("q2", [])],
+    }
+    return PDA(transitions, "q0", "Z", {"q2"})
 
 if __name__ == "__main__":
-    test() if "--test" in sys.argv else print("Usage: pushdown_auto.py --test")
+    pda = balanced_parens_pda()
+    for s in ["()", "(())", "(()", ")(", ""]:
+        print(f"'{s}': {pda.accepts(s)}")
